@@ -1,0 +1,60 @@
+>>> 使用Matplotlib生成1280*720彩色随机图像，并且使相邻两个像素颜色r、g、b差值的和不超过6
+要创建一个指定尺寸（例如，1280x720）的随机彩色图像，同时保证任何相邻像素的颜色差异（在RGB三个通道上分别计算后求和）
+不超过预设阈值（如6），我们可以采用以下方法：
+
+首先，初始化一个全零数组作为基础颜色层。然后，对每个像素点进行遍历，并为它生成一个新的随机颜色，但要确保其与周围已存
+在的相邻像素的差值符合限制条件。
+
+为了实现这一目标，我们可以通过以下Python代码来完成：
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+
+def color_difference(color1, color2):
+    return abs(color1[0] - color2[0]) + abs(color1[1] - color2[1]) + abs(color1[2] - color2[2])
+
+# 设置图像尺寸和颜色差异阈值
+width = 1280
+height = 720
+color_difference_threshold = 6
+
+# 初始化全零数组作为基本的RGB图像
+image_data = np.zeros((height, width, 3), dtype=np.uint8)
+
+# 填充像素，同时确保颜色差异不超过阈值
+for i in range(height):
+    for j in range(width):
+        # 如果是边界上的点，则只考虑现有邻近像素的颜色限制。
+        neighbors = []
+        if i > 0:
+            neighbors.append(image_data[i-1, j])
+        if j > 0:
+            neighbors.append(image_data[i, j-1])
+
+        while True:
+            # 随机生成一个[0,255]之间的颜色
+            new_color = np.random.randint(0, 256, size=3)
+
+            # 检查新颜色与所有邻居的差值是否都小于color_difference_threshold
+            all_differences_ok = True
+            for neighbor in neighbors:
+                if color_difference(new_color, neighbor) > color_difference_threshold:
+                    all_differences_ok = False
+                    break
+
+            if all_differences_ok:
+                image_data[i, j] = new_color
+                break
+
+# 使用Matplotlib显示图像
+plt.imshow(image_data)
+plt.show()
+```
+
+以上代码中，`color_difference` 函数用于计算两个颜色像素在RGB三个通道上的总差值。核心的双重循环遍历每个像素点，并通过
+内层循环为每一个点生成符合限制条件的颜色。
+
+需要注意的是，在实际执行时，由于对于每一像素可能需要多次尝试才能找到合适的颜色（尤其是在图像边界附近），因此这种实现
+方式可能会比较耗时特别是当尺寸较大和阈值较小时。在实际应用中，我们可能会考虑使用更高效的数据结构或算法优化来加快生成
+过程。
+然而这个程序保证了所有相邻像素之间的颜色差异满足给定条件，从而产生具有连贯视觉效果的图像。

@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+#本程序使用Qwen2:72b辅助制作，并调到适合在PC运行的参数。对话记录在对应的txt文件。
 def color_difference(color1, color2):
     return abs(color1[0] - color2[0]) + abs(color1[1] - color2[1]) + abs(color1[2] - color2[2])
 

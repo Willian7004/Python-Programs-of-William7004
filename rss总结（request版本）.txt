@@ -1,0 +1,387 @@
+》编写一个python程序，实现以下步骤：
+1.访问以下rss链接，获取文章标题
+	http://www.geekpark.net/rss
+	http://www.ifanr.com/feed
+	https://www.oschina.net/news/rss
+	http://sspai.com/feed
+	https://a.jiemian.com/index.php?m=article&amp;a=rss
+	http://www.chuapp.com/feed
+	http://youxiputao.com/feed
+	http://www.gamelook.com.cn/feed
+	http://jandan.net/feed
+	http://www.ithome.com/rss/
+	http://www.tmtpost.com/feed
+	https://rss.huxiu.com/
+	http://app.chinaz.com/?app=rss
+	http://solidot.org/index.rss
+2.如果当前目录没有文件“time.txt”，创建“time.txt”并写入当前时间。如果当前目录“time.txt”，从“time.txt”读取时间。
+3.如果上一步没有读取到时间，过滤掉发布时间距当前时间超过24小时的文章；如果上一步读取到时间，过滤掉发布时间早于读取到的时间的文章，比较时间时把时间统一为utc时区。
+4.在“time.txt”写入当前时间。如果上一步过滤后没有文章，输出“无文章更新”并结束程序；如果上一步过滤后有文章，输出过滤后的文章总数。
+5.获取第3步过滤后的文章全文，去掉文章中的换行。
+6.导入“ollama”包，把上一步得到的第一篇文章输入“ollama.summarize(）”函数。
+7.以当前日期和小时文件名（例如“7月10日11时”创建的文件命名为“071011”）在当前目录创建txt文件
+8.如果第6步调用“ollama.summarize(）”函数的输出内容中中文字符小于总字数的50%，把“ollama.summarize(）”函数的输出内容输入到“ollama.translate()”函数并把“ollama.translate()”函数的输出内容写入第7步创建的txt文件末尾。如果如果第6步调用“ollama.summarize(）”函数的输出内容中中文字符大于或等于总字数的50%，把“ollama.summarize(）”函数的输出内容写入第7步创建的txt文件末尾。
+8.把第5步得到的下一篇文章输入“ollama.summarize(）”函数并再次执行第8步，重复执行直到所有文章完成输入。
+9.输出“所有文章总结完成”并结束程序。
+
+
+import feedparser
+import os
+import time
+from datetime import datetime, timedelta
+import pytz
+import re
+
+# 假设 ollama 包已经安装，并且包含 summarize 和 translate 函数
+import ollama
+
+# RSS 链接列表
+rss_urls = [
+    "http://www.geekpark.net/rss",
+    "http://www.ifanr.com/feed",
+    "https://www.oschina.net/news/rss",
+    "http://sspai.com/feed",
+    "https://a.jiemian.com/index.php?m=article&a=rss",
+    "http://www.chuapp.com/feed",
+    "http://youxiputao.com/feed",
+    "http://www.gamelook.com.cn/feed",
+    "http://jandan.net/feed",
+    "http://www.ithome.com/rss/",
+    "http://www.tmtpost.com/feed",
+    "https://rss.huxiu.com/",
+    "http://app.chinaz.com/?app=rss",
+    "http://solidot.org/index.rss"
+]
+
+# 获取当前时间并转换为 UTC 时间
+def get_current_utc_time():
+    return datetime.now(pytz.utc)
+
+# 读取或创建 time.txt 文件
+def read_or_create_time_file():
+    if not os.path.exists("time.txt"):
+        with open("time.txt", "w") as f:
+            f.write(get_current_utc_time().strftime("%Y-%m-%d %H:%M:%S"))
+        return None
+    else:
+        with open("time.txt", "r") as f:
+            time_str = f.read().strip()
+            if time_str:
+                return datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=pytz.utc)
+            else:
+                return None
+
+# 过滤文章
+def filter_articles(articles, last_time):
+    current_time = get_current_utc_time()
+    filtered_articles = []
+    for article in articles:
+        published_time = datetime.strptime(article['published'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=pytz.utc)
+        if last_time is None:
+            if current_time - published_time <= timedelta(hours=24):
+                filtered_articles.append(article)
+        else:
+            if published_time > last_time:
+                filtered_articles.append(article)
+    return filtered_articles
+
+# 获取文章全文并去掉换行
+def get_article_content(article):
+    content = article.get('content', [{}])[0].get('value', '')
+    return re.sub(r'\s+', ' ', content)
+
+# 检查中文字符比例
+def check_chinese_ratio(text):
+    chinese_chars = re.findall(r'[\u4e00-\u9fff]', text)
+    return len(chinese_chars) / len(text)
+
+# 主函数
+def main():
+    last_time = read_or_create_time_file()
+    all_articles = []
+
+    for url in rss_urls:
+        feed = feedparser.parse(url)
+        all_articles.extend(feed.entries)
+
+    filtered_articles = filter_articles(all_articles, last_time)
+
+    with open("time.txt", "w") as f:
+        f.write(get_current_utc_time().strftime("%Y-%m-%d %H:%M:%S"))
+
+    if not filtered_articles:
+        print("无文章更新")
+        return
+
+    print(f"过滤后的文章总数: {len(filtered_articles)}")
+
+    for article in filtered_articles:
+        content = get_article_content(article)
+        summary = ollama.summarize(content)
+        file_name = datetime.now().strftime("%m%d%H")
+
+        with open(f"{file_name}.txt", "a") as f:
+            if check_chinese_ratio(summary) < 0.5:
+                translated_summary = ollama.translate(summary)
+                f.write(translated_summary)
+            else:
+                f.write(summary)
+
+    print("所有文章总结完成")
+
+if __name__ == "__main__":
+    main()
+
+》以上程序在“published_time = datetime.strptime(article['published'], "%Y-%m-%d %H:%M:%S").replace(tzinfo=pytz.utc)”步骤出现“ValueError: time data 'Wed, 10 Jul 2024 08:57:13 +0800' does not match format '%Y-%m-%d %H:%M:%S'”报错，可以尝试统一时间格式
+
+确实，`feedparser` 返回的 `published` 字段可能包含不同的日期时间格式。我们需要处理这些不同的格式。以下是修改后的代码，增加了对不同日期时间格式的处理：
+
+```python
+import feedparser
+import os
+import time
+from datetime import datetime, timedelta
+import pytz
+import re
+
+# 假设 ollama 包已经安装，并且包含 summarize 和 translate 函数
+import ollama
+
+# RSS 链接列表
+rss_urls = [
+    "http://www.geekpark.net/rss",
+    "http://www.ifanr.com/feed",
+    "https://www.oschina.net/news/rss",
+    "http://sspai.com/feed",
+    "https://a.jiemian.com/index.php?m=article&a=rss",
+    "http://www.chuapp.com/feed",
+    "http://youxiputao.com/feed",
+    "http://www.gamelook.com.cn/feed",
+    "http://jandan.net/feed",
+    "http://www.ithome.com/rss/",
+    "http://www.tmtpost.com/feed",
+    "https://rss.huxiu.com/",
+    "http://app.chinaz.com/?app=rss",
+    "http://solidot.org/index.rss"
+]
+
+# 获取当前时间并转换为 UTC 时间
+def get_current_utc_time():
+    return datetime.now(pytz.utc)
+
+# 读取或创建 time.txt 文件
+def read_or_create_time_file():
+    if not os.path.exists("time.txt"):
+        with open("time.txt", "w") as f:
+            f.write(get_current_utc_time().strftime("%Y-%m-%d %H:%M:%S"))
+        return None
+    else:
+        with open("time.txt", "r") as f:
+            time_str = f.read().strip()
+            if time_str:
+                return datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=pytz.utc)
+            else:
+                return None
+
+# 解析日期时间字符串
+def parse_date_string(date_str):
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=pytz.utc)
+    except ValueError:
+        try:
+            return datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %z").astimezone(pytz.utc)
+        except ValueError:
+            return None
+
+# 过滤文章
+def filter_articles(articles, last_time):
+    current_time = get_current_utc_time()
+    filtered_articles = []
+    for article in articles:
+        published_time = parse_date_string(article['published'])
+        if published_time is None:
+            continue
+        if last_time is None:
+            if current_time - published_time <= timedelta(hours=24):
+                filtered_articles.append(article)
+        else:
+            if published_time > last_time:
+                filtered_articles.append(article)
+    return filtered_articles
+
+# 获取文章全文并去掉换行
+def get_article_content(article):
+    content = article.get('content', [{}])[0].get('value', '')
+    return re.sub(r'\s+', ' ', content)
+
+# 检查中文字符比例
+def check_chinese_ratio(text):
+    chinese_chars = re.findall(r'[\u4e00-\u9fff]', text)
+    return len(chinese_chars) / len(text)
+
+# 主函数
+def main():
+    last_time = read_or_create_time_file()
+    all_articles = []
+
+    for url in rss_urls:
+        feed = feedparser.parse(url)
+        all_articles.extend(feed.entries)
+
+    filtered_articles = filter_articles(all_articles, last_time)
+
+    with open("time.txt", "w") as f:
+        f.write(get_current_utc_time().strftime("%Y-%m-%d %H:%M:%S"))
+
+    if not filtered_articles:
+        print("无文章更新")
+        return
+
+    print(f"过滤后的文章总数: {len(filtered_articles)}")
+
+    for article in filtered_articles:
+        content = get_article_content(article)
+        summary = ollama.summarize(content)
+        file_name = datetime.now().strftime("%m%d%H")
+
+        with open(f"{file_name}.txt", "a") as f:
+            if check_chinese_ratio(summary) < 0.5:
+                translated_summary = ollama.translate(summary)
+                f.write(translated_summary)
+            else:
+                f.write(summary)
+
+    print("所有文章总结完成")
+
+if __name__ == "__main__":
+    main()
+```
+
+在这个版本中，我们增加了一个 `parse_date_string` 函数，用于处理不同的日期时间格式。这样可以避免在解析 `published` 字段时出现 `ValueError`。
+
+》以上程序在“f.write(summary)”步骤出现“UnicodeEncodeError: 'gbk' codec can't encode character '\U0001f60a' in position 15: illegal multibyte sequence”报错，尝试调整字符编码格式
+
+这个错误是因为在写入文件时，默认的编码格式不支持某些特殊字符。我们可以通过指定文件的编码格式来解决这个问题。以下是修改后的代码：
+
+```python
+import feedparser
+import os
+import time
+from datetime import datetime, timedelta
+import pytz
+import re
+
+# 假设 ollama 包已经安装，并且包含 summarize 和 translate 函数
+import ollama
+
+# RSS 链接列表
+rss_urls = [
+    "http://www.geekpark.net/rss",
+    "http://www.ifanr.com/feed",
+    "https://www.oschina.net/news/rss",
+    "http://sspai.com/feed",
+    "https://a.jiemian.com/index.php?m=article&a=rss",
+    "http://www.chuapp.com/feed",
+    "http://youxiputao.com/feed",
+    "http://www.gamelook.com.cn/feed",
+    "http://jandan.net/feed",
+    "http://www.ithome.com/rss/",
+    "http://www.tmtpost.com/feed",
+    "https://rss.huxiu.com/",
+    "http://app.chinaz.com/?app=rss",
+    "http://solidot.org/index.rss"
+]
+
+# 获取当前时间并转换为 UTC 时间
+def get_current_utc_time():
+    return datetime.now(pytz.utc)
+
+# 读取或创建 time.txt 文件
+def read_or_create_time_file():
+    if not os.path.exists("time.txt"):
+        with open("time.txt", "w", encoding='utf-8') as f:
+            f.write(get_current_utc_time().strftime("%Y-%m-%d %H:%M:%S"))
+        return None
+    else:
+        with open("time.txt", "r", encoding='utf-8') as f:
+            time_str = f.read().strip()
+            if time_str:
+                return datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=pytz.utc)
+            else:
+                return None
+
+# 解析日期时间字符串
+def parse_date_string(date_str):
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=pytz.utc)
+    except ValueError:
+        try:
+            return datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %z").astimezone(pytz.utc)
+        except ValueError:
+            return None
+
+# 过滤文章
+def filter_articles(articles, last_time):
+    current_time = get_current_utc_time()
+    filtered_articles = []
+    for article in articles:
+        published_time = parse_date_string(article['published'])
+        if published_time is None:
+            continue
+        if last_time is None:
+            if current_time - published_time <= timedelta(hours=24):
+                filtered_articles.append(article)
+        else:
+            if published_time > last_time:
+                filtered_articles.append(article)
+    return filtered_articles
+
+# 获取文章全文并去掉换行
+def get_article_content(article):
+    content = article.get('content', [{}])[0].get('value', '')
+    return re.sub(r'\s+', ' ', content)
+
+# 检查中文字符比例
+def check_chinese_ratio(text):
+    chinese_chars = re.findall(r'[\u4e00-\u9fff]', text)
+    return len(chinese_chars) / len(text)
+
+# 主函数
+def main():
+    last_time = read_or_create_time_file()
+    all_articles = []
+
+    for url in rss_urls:
+        feed = feedparser.parse(url)
+        all_articles.extend(feed.entries)
+
+    filtered_articles = filter_articles(all_articles, last_time)
+
+    with open("time.txt", "w", encoding='utf-8') as f:
+        f.write(get_current_utc_time().strftime("%Y-%m-%d %H:%M:%S"))
+
+    if not filtered_articles:
+        print("无文章更新")
+        return
+
+    print(f"过滤后的文章总数: {len(filtered_articles)}")
+
+    for article in filtered_articles:
+        content = get_article_content(article)
+        summary = ollama.summarize(content)
+        file_name = datetime.now().strftime("%m%d%H")
+
+        with open(f"{file_name}.txt", "a", encoding='utf-8') as f:
+            if check_chinese_ratio(summary) < 0.5:
+                translated_summary = ollama.translate(summary)
+                f.write(translated_summary)
+            else:
+                f.write(summary)
+
+    print("所有文章总结完成")
+
+if __name__ == "__main__":
+    main()
+```
+
+在这个版本中，我们在打开文件时指定了 `encoding='utf-8'`，这样可以确保文件能够正确处理包含特殊字符的文本。

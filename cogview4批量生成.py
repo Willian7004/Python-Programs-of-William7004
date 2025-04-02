@@ -44,7 +44,7 @@ for prompt_idx, prompt in enumerate(prompts):
             num_inference_steps=30,
             width=1920,
             height=1088,
-        ).images[0][0]
+        ).images[0]
         
         # 保存图像
         filename = f"{prompt[:200]}_{seed}.png"
